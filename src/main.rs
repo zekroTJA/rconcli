@@ -138,7 +138,7 @@ fn main() {
         }
 
         let res = client
-            .send_command(cmd[..cmd.len() - 1].into())
+            .send_command(cmd.trim_end().into())
             .expect("Command execution failed");
 
         println!("{}", res.body);

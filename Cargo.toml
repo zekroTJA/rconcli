@@ -1,6 +1,6 @@
 [package]
 name = "rconcli"
-version = "1.1.1"
+version = "1.1.2"
 description = "A simple RCON CLI for Minecraft servers."
 authors = ["Ringo Hoffmann <contact@zekro.de>"]
 edition = "2021"
