@@ -112,8 +112,6 @@ fn main() {
         .get_string("rcon.password")
         .expect("No password has been provided");
 
-    dbg!(&addr, &passwd);
-
     let mut client = Client::new(addr).expect("Failed connecting to server");
     client.authenticate(passwd).expect("Authentication failed");
 
