@@ -40,12 +40,16 @@ fn main() {
             .build()
             .expect("Failed reading config from server properties");
 
-        let ip = conf
-            .get_string("server-ip")
-            .unwrap_or_else(|_| "localhost".into());
-        let port = conf
-            .get_string("rcon.port")
-            .unwrap_or_else(|_| "25575".into());
+        let mut ip = conf.get_string("server-ip").unwrap_or_else(|_| "".into());
+        if ip.is_empty() {
+            ip = "localhost".into();
+        }
+
+        let mut port = conf.get_string("rcon.port").unwrap_or_else(|_| "".into());
+        if port.is_empty() {
+            port = "25575".into();
+        }
+
         addr = format!("{ip}:{port}");
 
         passwd = conf.get_string("rcon.password").ok();
