@@ -1,18 +1,14 @@
+mod cfg;
+
+use anyhow::{Ok, Result};
+use cfg::parse_config;
 use clap::Parser;
-use config::{Config, ConfigError, File, FileFormat, Map, Source, Value, ValueKind};
-use directories::ProjectDirs;
 use minecraft_client_rs::Client;
-use std::{
-    io::{self, Write},
-    path::Path,
-    process::exit,
-    result,
-};
-use string_join::Join;
+use std::io::{self, Write};
 
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
-struct Args {
+pub struct Args {
     /// Location of a server.proterties file to read credentials from.
     #[clap(long)]
     properties: Option<String>,
@@ -29,118 +25,74 @@ struct Args {
     command: Vec<String>,
 }
 
-impl Source for Args {
-    fn clone_into_box(&self) -> Box<dyn Source + Send + Sync> {
-        Box::new(self.clone())
-    }
-
-    fn collect(&self) -> result::Result<Map<String, Value>, ConfigError> {
-        let mut m = Map::new();
-        let uri: String = "command line arguments".into();
-
-        if let Some(password) = &self.password {
-            m.insert(
-                "rcon.password".into(),
-                Value::new(Some(&uri), ValueKind::String(password.clone())),
-            );
-        }
-
-        if let Some(address) = &self.address {
-            let split: Vec<&str> = address.split(':').collect();
-
-            if let Some(ip) = split.get(0) {
-                m.insert(
-                    "server-ip".into(),
-                    Value::new(Some(&uri), ValueKind::String(ip.to_string())),
-                );
-            }
-
-            if let Some(port) = split.get(1) {
-                m.insert(
-                    "rcon.port".into(),
-                    Value::new(Some(&uri), ValueKind::String(port.to_string())),
-                );
-            }
-        }
-
-        Ok(m)
-    }
-}
-
-fn main() {
+fn run() -> Result<()> {
     let args = Args::parse();
 
-    // Try to load config from ./config.ini
-    let mut conf_builder =
-        Config::builder().add_source(File::from(Path::new("config.ini")).required(false));
+    let conf = parse_config(&args)?;
 
-    // Try to load config from $CONFIG_DIR/config.ini
-    if let Some(dirs) = ProjectDirs::from("de", "zekro", "rconcli") {
-        let pth = dirs
-            .config_dir()
-            .to_str()
-            .expect("could not transform path to string");
-        conf_builder =
-            conf_builder.add_source(File::from(Path::new(pth).join("config.ini")).required(false));
-    }
+    let ip = conf
+        .get_string("server-ip")
+        .unwrap_or_else(|_| "localhost".into());
 
-    // Load config from passed server.properties, if specified
-    if let Some(properties) = &args.properties {
-        conf_builder =
-            conf_builder.add_source(File::new(properties, FileFormat::Ini).required(true));
-    }
-
-    // Load config from command line parameters
-    conf_builder = conf_builder.add_source(args.clone());
-
-    let conf = conf_builder
-        .build()
-        .expect("Failed reading config from server properties");
-
-    let mut ip = conf.get_string("server-ip").unwrap_or_else(|_| "".into());
-    if ip.is_empty() {
-        ip = "localhost".into();
-    }
-
-    let mut port = conf.get_string("rcon.port").unwrap_or_else(|_| "".into());
-    if port.is_empty() {
-        port = "25575".into();
-    }
+    let port = conf
+        .get_string("rcon.port")
+        .unwrap_or_else(|_| "25575".into());
 
     let addr = format!("{ip}:{port}");
     let passwd = conf
         .get_string("rcon.password")
-        .expect("No password has been provided");
+        .or_else(|_| prompt_password())?;
 
-    let mut client = Client::new(addr).expect("Failed connecting to server");
-    client.authenticate(passwd).expect("Authentication failed");
+    let mut client =
+        Client::new(addr).map_err(|e| anyhow::anyhow!("failed initializing client: {e}"))?;
+    client
+        .authenticate(passwd)
+        .map_err(|e| anyhow::anyhow!("authentication failed: {e}"))?;
 
-    let cmd = " ".join(args.command);
+    let cmd = args.command.join(" ");
 
     if !cmd.is_empty() {
-        let res = client.send_command(cmd).expect("Command execution failed");
+        let res = client
+            .send_command(cmd)
+            .map_err(|e| anyhow::anyhow!("command execution failed: {e}"))?;
         println!("{}", res.body);
-        exit(0);
+        return Ok(());
     }
 
+    let mut cmd = String::new();
     loop {
-        let mut cmd = String::new();
-
         print!("> ");
-        io::stdout().flush().unwrap();
+        io::stdout().flush()?;
 
-        io::stdin()
-            .read_line(&mut cmd)
-            .expect("Reading from STDIN failed");
+        cmd.clear();
+        io::stdin().read_line(&mut cmd)?;
 
         if cmd.is_empty() {
             continue;
         }
 
+        let cmd = cmd.trim();
+
+        match cmd.to_lowercase().as_str() {
+            "exit" | "e" | "quit" | "q" => return Ok(()),
+            _ => {}
+        }
+
         let res = client
-            .send_command(cmd.trim_end().into())
-            .expect("Command execution failed");
+            .send_command(cmd.into())
+            .map_err(|e| anyhow::anyhow!("command execution failed: {e}"))?;
 
         println!("{}", res.body);
     }
+}
+
+fn prompt_password() -> Result<String> {
+    print!("password: ");
+    std::io::stdout().flush()?;
+    let passwd = rpassword::read_password()?;
+    Ok(passwd)
+}
+
+fn main() {
+    run().expect("failed")
 }
