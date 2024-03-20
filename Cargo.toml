@@ -4,6 +4,9 @@ version = "1.2.0"
 description = "A simple RCON CLI for Minecraft servers."
 authors = ["Ringo Hoffmann <contact@zekro.de>"]
 edition = "2021"
+readme = "README.md"
+license = "MIT"
+keywords = ["minecraft", "rcon", "cli"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
