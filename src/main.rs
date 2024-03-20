@@ -8,7 +8,10 @@ use colors::Transformer;
 use is_terminal::IsTerminal;
 use minecraft_client_rs::Client;
 use rustyline::{error::ReadlineError, DefaultEditor};
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    process::exit,
+};
 use yansi::Paint;
 
 #[derive(Parser, Debug, Clone)]
@@ -125,5 +128,8 @@ fn prompt_password() -> Result<String> {
 }
 
 fn main() {
-    run().expect("failed")
+    if let Err(err) = run() {
+        writeln!(io::stderr(), "{}: {}", "error".red().bold(), err).expect("writing error");
+        exit(1);
+    }
 }
