@@ -4,11 +4,15 @@ const ANSI_ESCAPE: char = '\x1b';
 #[derive(Default)]
 pub struct Transformer {
     buf: String,
+    disable_color: bool,
 }
 
 impl Transformer {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(disable_color: bool) -> Self {
+        Self {
+            disable_color,
+            ..Default::default()
+        }
     }
 
     pub fn transform(&mut self, v: &str) -> &str {
@@ -28,8 +32,10 @@ impl Transformer {
             };
 
             if let Some(ansi_clr) = mc_to_ansi(clr) {
-                self.buf.push(ANSI_ESCAPE);
-                self.buf.push_str(ansi_clr);
+                if !self.disable_color {
+                    self.buf.push(ANSI_ESCAPE);
+                    self.buf.push_str(ansi_clr);
+                }
             } else {
                 self.buf.push(MC_ESCAPE);
             }

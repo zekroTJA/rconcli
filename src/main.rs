@@ -1,34 +1,47 @@
 mod cfg;
 mod colors;
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use cfg::parse_config;
 use clap::Parser;
 use colors::Transformer;
+use is_terminal::IsTerminal;
 use minecraft_client_rs::Client;
+use rustyline::{error::ReadlineError, DefaultEditor};
 use std::io::{self, Write};
+use yansi::Paint;
 
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
+    /// Command to execute.
+    command: Vec<String>,
+
     /// Location of a server.proterties file to read credentials from.
-    #[clap(long)]
+    #[arg(long)]
     properties: Option<String>,
 
     /// The address and port of the target server.
-    #[clap(short, long)]
+    #[arg(short, long)]
     address: Option<String>,
 
     /// The password of the target server.
-    #[clap(short, long)]
+    #[arg(short, long)]
     password: Option<String>,
 
-    /// Command to execute.
-    command: Vec<String>,
+    /// Supress colored output
+    #[arg(long)]
+    no_color: bool,
 }
 
 fn run() -> Result<()> {
     let args = Args::parse();
+
+    let enable_color = io::stdout().is_terminal() && !args.no_color;
+    match enable_color {
+        true => yansi::enable(),
+        false => yansi::disable(),
+    }
 
     let conf = parse_config(&args)?;
 
@@ -45,13 +58,13 @@ fn run() -> Result<()> {
         .get_string("rcon.password")
         .or_else(|_| prompt_password())?;
 
-    let mut client =
-        Client::new(addr).map_err(|e| anyhow::anyhow!("failed initializing client: {e}"))?;
+    let mut client = Client::new(addr.clone())
+        .map_err(|e| anyhow::anyhow!("failed initializing client: {e}"))?;
     client
         .authenticate(passwd)
         .map_err(|e| anyhow::anyhow!("authentication failed: {e}"))?;
 
-    let mut transformer = Transformer::new();
+    let mut transformer = Transformer::new(!enable_color);
 
     if !args.command.is_empty() {
         let cmd = args.command.join(" ");
@@ -66,19 +79,28 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
-    let mut cmd = String::new();
+    let mut rl = DefaultEditor::new()?;
+
+    println!(
+        "{} {}\n{} {} {} {} {} {} {}\n",
+        "RCON CLI connected to".bold().dim(),
+        addr.bold().dim(),
+        "You can use".dim(),
+        "help".yellow().italic(),
+        "to list available commands or use".dim(),
+        "exit".cyan().italic(),
+        "or".dim(),
+        "quit".cyan().italic(),
+        "to exit.".dim(),
+    );
+
+    let prompt = "> ".dim().to_string();
     loop {
-        print!("> ");
-        io::stdout().flush()?;
-
-        cmd.clear();
-        io::stdin().read_line(&mut cmd)?;
-
-        if cmd.is_empty() {
-            continue;
-        }
-
-        let cmd = cmd.trim();
+        let cmd = match rl.readline(&prompt) {
+            Ok(cmd) => cmd,
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => return Ok(()),
+            Err(e) => return Err(e.into()),
+        };
 
         match cmd.to_lowercase().as_str() {
             "exit" | "e" | "quit" | "q" => return Ok(()),
@@ -86,8 +108,10 @@ fn run() -> Result<()> {
         }
 
         let res = client
-            .send_command(cmd.into())
+            .send_command(cmd.clone())
             .map_err(|e| anyhow::anyhow!("command execution failed: {e}"))?;
+
+        rl.add_history_entry(cmd)?;
 
         println!("{}", transformer.transform(&res.body));
     }
