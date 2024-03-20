@@ -1,8 +1,10 @@
 mod cfg;
+mod colors;
 
 use anyhow::{Ok, Result};
 use cfg::parse_config;
 use clap::Parser;
+use colors::Transformer;
 use minecraft_client_rs::Client;
 use std::io::{self, Write};
 
@@ -49,13 +51,18 @@ fn run() -> Result<()> {
         .authenticate(passwd)
         .map_err(|e| anyhow::anyhow!("authentication failed: {e}"))?;
 
-    let cmd = args.command.join(" ");
+    let mut transformer = Transformer::new();
 
-    if !cmd.is_empty() {
+    if !args.command.is_empty() {
+        let cmd = args.command.join(" ");
+        if cmd.is_empty() {
+            anyhow::bail!("empty command");
+        }
+
         let res = client
             .send_command(cmd)
             .map_err(|e| anyhow::anyhow!("command execution failed: {e}"))?;
-        println!("{}", res.body);
+        println!("{}", transformer.transform(&res.body));
         return Ok(());
     }
 
@@ -82,7 +89,7 @@ fn run() -> Result<()> {
             .send_command(cmd.into())
             .map_err(|e| anyhow::anyhow!("command execution failed: {e}"))?;
 
-        println!("{}", res.body);
+        println!("{}", transformer.transform(&res.body));
     }
 }
 
