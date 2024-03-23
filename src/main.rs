@@ -5,12 +5,14 @@ use anyhow::Result;
 use cfg::parse_config;
 use clap::Parser;
 use colors::Transformer;
+use config::ConfigError;
 use is_terminal::IsTerminal;
 use minecraft_client_rs::Client;
 use rustyline::{error::ReadlineError, DefaultEditor};
 use std::{
     io::{self, Write},
     process::exit,
+    result,
 };
 use yansi::Paint;
 
@@ -21,7 +23,7 @@ pub struct Args {
     command: Vec<String>,
 
     /// Location of a server.proterties file to read credentials from.
-    #[arg(long)]
+    #[arg(short = 'P', long)]
     properties: Option<String>,
 
     /// The address and port of the target server.
@@ -50,10 +52,12 @@ fn run() -> Result<()> {
 
     let ip = conf
         .get_string("server-ip")
+        .and_then(err_empty)
         .unwrap_or_else(|_| "localhost".into());
 
     let port = conf
         .get_string("rcon.port")
+        .and_then(err_empty)
         .unwrap_or_else(|_| "25575".into());
 
     let addr = format!("{ip}:{port}");
@@ -125,6 +129,13 @@ fn prompt_password() -> Result<String> {
     std::io::stdout().flush()?;
     let passwd = rpassword::read_password()?;
     Ok(passwd)
+}
+
+fn err_empty<T: AsRef<str>>(v: T) -> result::Result<T, ConfigError> {
+    match v.as_ref().is_empty() {
+        true => Err(ConfigError::Message("empty string".into())),
+        false => Ok(v),
+    }
 }
 
 fn main() {
